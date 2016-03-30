@@ -192,6 +192,7 @@ def AudioCallback(in_data, frame_count, time_info, status):
 def MidiCallback(message, time_stamp):
     global playingnotes, sustain, sustainplayingnotes
     global preset
+    global bankmsb, banklsb
     messagetype = message[0] >> 4
     messagechannel = (message[0] & 15) + 1
     note = message[1] if len(message) > 1 else None
@@ -222,6 +223,14 @@ def MidiCallback(message, time_stamp):
         print 'Program change ' + str(note)
         preset = note
         LoadSamples()
+
+    elif (messagetype == 11) and (note == 0):  # Change msb bank
+        print 'Bank msb change ' + str(velocity)
+        bankmsb = velocity
+
+    elif (messagetype == 11) and (note == 32):  # Change lsb bank
+        print 'Bank lsb change ' + str(velocity)
+        banklsb = velocity
 
     elif (messagetype == 11) and (note == 64) and (velocity < 64):  # sustain pedal off
         for n in sustainplayingnotes:
@@ -268,6 +277,8 @@ NOTES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
 
 
 def ActuallyLoad():
+    global bankmsb
+    global banklsb
     global preset
     global samples
     global playingsounds
@@ -277,9 +288,31 @@ def ActuallyLoad():
     globalvolume = 10 ** (-12.0/20)  # -12dB default global volume
     globaltranspose = 0
 
-    basename = next((f for f in os.listdir(SAMPLES_DIR) if f.startswith("%d " % preset)), None)      # or next(glob.iglob("blah*"), None)
+    basedir = SAMPLES_DIR
+    basename = None
+	
+
+    bankmsbname = next((f for f in os.listdir(SAMPLES_DIR) if f.startswith("msb%d " % (bankmsb))), None)
+    if bankmsbname:
+		bankmsbdir = SAMPLES_DIR + "/" + bankmsbname
+		banklsbname = next((f for f in os.listdir(bankmsbdir) if f.startswith("lsb%d " % (banklsb))), None)
+		if banklsbname:
+			banklsbdir = bankmsbdir + "/" + banklsbname
+			basename = next((f for f in os.listdir(banklsbdir) if f.startswith("%d " % (preset))), None)
+			
+		if basename:
+			basedir = banklsbdir
+		else:
+			basename = next((f for f in os.listdir(bankmsbdir) if f.startswith("%d " % (preset))), None)
+			if basename:
+				basedir = bankmsbdir
+
+    if not basename:
+		basename = next((f for f in os.listdir(SAMPLES_DIR) if f.startswith("%d " % preset)), None)      # or next(glob.iglob("blah*"), None)
+
+
     if basename:
-        dirname = os.path.join(SAMPLES_DIR, basename)
+        dirname = os.path.join(basedir, basename)
     if not basename:
         print 'Preset empty: %s' % preset
         display("E%03d" % preset)
@@ -477,6 +510,8 @@ if USE_SERIALPORT_MIDI:
 #
 #########################################
 
+bankmsb = 0
+banklsb = 0
 preset = 0
 LoadSamples()
 
